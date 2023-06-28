@@ -24,6 +24,7 @@ import feign.RequestLine;
  * Introspection client to call to keycloak endpoint
  */
 public interface IntrospectionClient {
+    
     @RequestLine("POST")
     @Headers("Content-type:application/x-www-form-urlencoded")
     IntrospectInfo introspect(@Param("token") String token, @Param("token_type_hint") String tokenType);

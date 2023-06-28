@@ -82,43 +82,67 @@ public class KeycloakClient extends AbstractKeyManager {
     private DCRClient dcrClient;
     private IntrospectionClient introspectionClient;
 
+    private void debugLogger(String method, String key, String val) {
+        log.error("MICBN (" + method + ") -- " + key + " : " + val);
+    }
+
     /**
-     * {@code APIManagerComponent} calls this method, passing KeyManagerConfiguration as a {@code String}.
+     * {@code APIManagerComponent} calls this method, passing
+     * KeyManagerConfiguration as a {@code String}.
      *
-     * @param keyManagerConfiguration Configuration as a {@link KeyManagerConfiguration}
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @param keyManagerConfiguration Configuration as a
+     *                                {@link KeyManagerConfiguration}
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     @Override
     public void loadConfiguration(KeyManagerConfiguration keyManagerConfiguration) throws APIManagementException {
 
         this.configuration = keyManagerConfiguration;
-        String clientRegistrationEndpoint =
-                (String) configuration.getParameter(APIConstants.KeyManager.CLIENT_REGISTRATION_ENDPOINT);
+        String clientRegistrationEndpoint = (String) configuration
+                .getParameter(APIConstants.KeyManager.CLIENT_REGISTRATION_ENDPOINT);
         String clientId = (String) configuration.getParameter(KeycloakConstants.CLIENT_ID);
         String clientSecret = (String) configuration.getParameter(KeycloakConstants.CLIENT_SECRET);
-        BasicAuthRequestInterceptor basicAuthRequestInterceptor =
+        BasicAuthRequestInterceptor basicAuthRequestInterceptor = //
                 new BasicAuthRequestInterceptor(clientId, clientSecret);
         String tokenEndpoint = (String) configuration.getParameter(APIConstants.KeyManager.TOKEN_ENDPOINT);
         String revokeEndpoint = (String) configuration.getParameter(APIConstants.KeyManager.REVOKE_ENDPOINT);
+        String introspectEndpoint = (String) configuration.getParameter(APIConstants.KeyManager.INTROSPECTION_ENDPOINT);
+
         Gson gson = new GsonBuilder().serializeNulls().create();
-        if (StringUtils.isNotEmpty(clientId) && StringUtils.isNotEmpty(clientSecret) &&
-                StringUtils.isNotEmpty(tokenEndpoint) && StringUtils.isNotEmpty(revokeEndpoint)) {
-            AccessTokenGenerator accessTokenGenerator =
-                    new AccessTokenGenerator(tokenEndpoint, revokeEndpoint, clientId,
-                            clientSecret);
-            dcrClient =
-                    Feign.builder().client(new OkHttpClient()).decoder(new GsonDecoder(gson))
-                            .encoder(new GsonEncoder(gson))
-                            .requestInterceptor(new BearerInterceptor(accessTokenGenerator))
-                            .target(DCRClient.class, clientRegistrationEndpoint);
-            String introspectEndpoint =
-                    (String) configuration.getParameter(APIConstants.KeyManager.INTROSPECTION_ENDPOINT);
-            introspectionClient =
-                    Feign.builder().client(new OkHttpClient()).encoder(new GsonEncoder(gson))
-                            .decoder(new GsonDecoder(gson))
-                            .logger(new Slf4jLogger())
-                            .requestInterceptor(basicAuthRequestInterceptor)
-                            .encoder(new FormEncoder()).target(IntrospectionClient.class, introspectEndpoint);
+
+        debugLogger("loadConfiguration", "clientRegistrationEndpoint", clientRegistrationEndpoint);
+        debugLogger("loadConfiguration", "clientId", clientId);
+        debugLogger("loadConfiguration", "clientSecret", clientSecret);
+        debugLogger("loadConfiguration", "tokenEndpoint", tokenEndpoint);
+        debugLogger("loadConfiguration", "revokeEndpoint", revokeEndpoint);
+
+        if (StringUtils.isNotEmpty(clientId) //
+                && StringUtils.isNotEmpty(clientSecret) //
+                && StringUtils.isNotEmpty(tokenEndpoint) //
+                && StringUtils.isNotEmpty(revokeEndpoint)) {
+
+            AccessTokenGenerator accessTokenGenerator = new AccessTokenGenerator(
+                    tokenEndpoint,
+                    revokeEndpoint,
+                    clientId,
+                    clientSecret);
+
+            this.dcrClient = Feign.builder()
+                    .client(new OkHttpClient())
+                    .decoder(new GsonDecoder(gson))
+                    .encoder(new GsonEncoder(gson))
+                    .requestInterceptor(new BearerInterceptor(accessTokenGenerator))
+                    .target(DCRClient.class, clientRegistrationEndpoint);
+
+            this.introspectionClient = Feign.builder()
+                    .client(new OkHttpClient())
+                    .encoder(new GsonEncoder(gson))
+                    .decoder(new GsonDecoder(gson))
+                    .logger(new Slf4jLogger())
+                    .requestInterceptor(basicAuthRequestInterceptor)
+                    .encoder(new FormEncoder())
+                    .target(IntrospectionClient.class, introspectEndpoint);
         } else {
             throw new APIManagementException("Error while configuring Keycloak Connector");
         }
@@ -129,9 +153,34 @@ public class KeycloakClient extends AbstractKeyManager {
 
         OAuthApplicationInfo oAuthApplicationInfo = oAuthAppRequest.getOAuthApplicationInfo();
         if (oAuthApplicationInfo != null) {
-            ClientInfo clientInfoFromOauthApplicationInfo =
-                    createClientInfoFromOauthApplicationInfo(oAuthApplicationInfo);
-            ClientInfo createdApplication = dcrClient.createApplication(clientInfoFromOauthApplicationInfo);
+
+            debugLogger("createApplication", " oAuthApplicationInfo::ClientId", //
+                oAuthApplicationInfo.getClientId());
+            debugLogger("createApplication", " oAuthApplicationInfo::ClientName", //
+                oAuthApplicationInfo.getClientName());
+            debugLogger("createApplication", " oAuthApplicationInfo::ClientSecret", //
+                oAuthApplicationInfo.getClientSecret());
+
+            ClientInfo clientInfoFromOauthApplicationInfo = //
+                createClientInfoFromOauthApplicationInfo(oAuthApplicationInfo);
+
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::ClientId", //
+                clientInfoFromOauthApplicationInfo.getClientId());
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::ClientName", //
+                clientInfoFromOauthApplicationInfo.getClientName());
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::ClientSecret", //
+                clientInfoFromOauthApplicationInfo.getClientSecret());
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::GrantTypes", //
+                clientInfoFromOauthApplicationInfo.getGrantTypes().toString());
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::ResponseTypes", //
+                clientInfoFromOauthApplicationInfo.getResponseTypes().toString());
+            debugLogger("createApplication", "clientInfoFromOauthApplicationInfo::SubjectType", //
+                clientInfoFromOauthApplicationInfo.getSubjectType());
+
+            String payload = new Gson().toJson(clientInfoFromOauthApplicationInfo);
+            debugLogger("createApplication", "payload", payload);
+
+            ClientInfo createdApplication = this.dcrClient.createApplication(clientInfoFromOauthApplicationInfo);
             if (createdApplication != null) {
                 oAuthApplicationInfo = createOAuthAppInfoFromResponse(createdApplication);
                 return oAuthApplicationInfo;
@@ -152,9 +201,9 @@ public class KeycloakClient extends AbstractKeyManager {
                         "Updating an OAuth client in Keycloak authorization server for the Consumer Key %s",
                         clientId));
             }
-            ClientInfo clientInfoFromOauthApplicationInfo =
-                    createClientInfoFromOauthApplicationInfo(oAuthApplicationInfo);
-            ClientInfo clientInfo = dcrClient.updateApplication(clientId, clientInfoFromOauthApplicationInfo);
+            ClientInfo clientInfoFromOauthApplicationInfo = createClientInfoFromOauthApplicationInfo(
+                    oAuthApplicationInfo);
+            ClientInfo clientInfo = this.dcrClient.updateApplication(clientId, clientInfoFromOauthApplicationInfo);
             if (clientInfo != null) {
                 oAuthApplicationInfo = createOAuthAppInfoFromResponse(clientInfo);
                 return oAuthApplicationInfo;
@@ -165,20 +214,19 @@ public class KeycloakClient extends AbstractKeyManager {
 
     @Override
     public void deleteApplication(String clientId) throws APIManagementException {
-
         if (log.isDebugEnabled()) {
             log.debug(
                     String.format("Deleting an OAuth client in Keycloak authorization server for the Consumer Key: %s",
                             clientId));
         }
-        dcrClient.deleteApplication(clientId);
+        debugLogger("deleteApplication", " clientId", clientId);
+        this.dcrClient.deleteApplication(clientId);
     }
 
     @Override
     public OAuthApplicationInfo retrieveApplication(String clientId) throws APIManagementException {
-
         if (StringUtils.isNotEmpty(clientId)) {
-            ClientInfo application = dcrClient.getApplication(clientId);
+            ClientInfo application = this.dcrClient.getApplication(clientId);
             return createOAuthAppInfoFromResponse(application);
         }
         return null;
@@ -195,6 +243,10 @@ public class KeycloakClient extends AbstractKeyManager {
             log.debug(String.format("Get new client access token from authorization server for the Consumer Key %s",
                     clientId));
         }
+
+        debugLogger("getNewApplicationAccessToken", "clientId", clientId);
+        debugLogger("getNewApplicationAccessToken", "clientSecret", clientSecret);
+
         List<NameValuePair> parameters = new ArrayList<NameValuePair>();
         Object grantType = accessTokenRequest.getGrantType();
         if (grantType == null) {
@@ -207,8 +259,8 @@ public class KeycloakClient extends AbstractKeyManager {
         }
         AccessTokenInfo retrievedAccessTokenInfo = getAccessToken(clientId, clientSecret, parameters);
         if (retrievedAccessTokenInfo != null) {
-            org.wso2.carbon.apimgt.api.model.AccessTokenInfo accessTokenInfo =
-                    new org.wso2.carbon.apimgt.api.model.AccessTokenInfo();
+            org.wso2.carbon.apimgt.api.model.AccessTokenInfo accessTokenInfo = //
+                new org.wso2.carbon.apimgt.api.model.AccessTokenInfo();
             accessTokenInfo.setConsumerKey(clientId);
             accessTokenInfo.setConsumerSecret(clientSecret);
             accessTokenInfo.setAccessToken(retrievedAccessTokenInfo.getAccessToken());
@@ -221,7 +273,6 @@ public class KeycloakClient extends AbstractKeyManager {
 
     @Override
     public String getNewApplicationConsumerSecret(AccessTokenRequest accessTokenRequest) throws APIManagementException {
-
         return null;
     }
 
@@ -229,10 +280,12 @@ public class KeycloakClient extends AbstractKeyManager {
     public org.wso2.carbon.apimgt.api.model.AccessTokenInfo getTokenMetaData(String accessToken)
             throws APIManagementException {
 
-        org.wso2.carbon.apimgt.api.model.AccessTokenInfo tokenInfo =
-                new org.wso2.carbon.apimgt.api.model.AccessTokenInfo();
-        IntrospectInfo introspectInfo =
-                introspectionClient.introspect(accessToken, KeycloakConstants.REQUESTING_PARTY_TOKEN);
+        debugLogger("getTokenMetaData", "accessToken", accessToken);
+
+        org.wso2.carbon.apimgt.api.model.AccessTokenInfo tokenInfo = //
+            new org.wso2.carbon.apimgt.api.model.AccessTokenInfo();
+        IntrospectInfo introspectInfo = introspectionClient.introspect(accessToken,
+                KeycloakConstants.REQUESTING_PARTY_TOKEN);
         if (introspectInfo != null) {
             tokenInfo.setAccessToken(accessToken);
             tokenInfo.setTokenValid(introspectInfo.isActive());
@@ -253,9 +306,11 @@ public class KeycloakClient extends AbstractKeyManager {
      * This is used to build accesstoken request from OAuth application info.
      *
      * @param oAuthApplication OAuth application details.
-     * @param tokenRequest     AccessTokenRequest that is need to be updated with addtional info.
+     * @param tokenRequest     AccessTokenRequest that is need to be updated with
+     *                         addtional info.
      * @return AccessTokenRequest after adding OAuth application details.
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     @Override
     public AccessTokenRequest buildAccessTokenRequestFromOAuthApp(
@@ -290,8 +345,8 @@ public class KeycloakClient extends AbstractKeyManager {
             oAuthApplication.addParameter(KeycloakConstants.TOKEN_SCOPE, Arrays.toString(tokenScopes));
         }
         if (oAuthApplication.getParameter(ApplicationConstants.VALIDITY_PERIOD) != null) {
-            tokenRequest.setValidityPeriod(Long.parseLong((String) oAuthApplication.getParameter(ApplicationConstants
-                    .VALIDITY_PERIOD)));
+            tokenRequest.setValidityPeriod(
+                    Long.parseLong((String) oAuthApplication.getParameter(ApplicationConstants.VALIDITY_PERIOD)));
         }
         Object grantType = oAuthApplication.getParameter(KeycloakConstants.TOKEN_GRANT_TYPE);
         if (grantType != null) {
@@ -303,27 +358,28 @@ public class KeycloakClient extends AbstractKeyManager {
 
     /**
      * Returns the key manager configuration of the current API Manager instance
+     * 
      * @return configuration
      * @throws APIManagementException
      */
     @Override
     public KeyManagerConfiguration getKeyManagerConfiguration() throws APIManagementException {
-
         return configuration;
     }
 
     @Override
     public OAuthApplicationInfo buildFromJSON(String s) throws APIManagementException {
-
         return null;
     }
 
     /**
-     * This method will be called when mapping existing OAuth Clients with Application in API Manager
+     * This method will be called when mapping existing OAuth Clients with
+     * Application in API Manager
      *
      * @param oAuthAppRequest Details of the OAuth Client to be mapped.
      * @return {@code OAuthApplicationInfo} with the details of the mapped client.
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     @Override
     public OAuthApplicationInfo mapOAuthApplication(OAuthAppRequest oAuthAppRequest) throws APIManagementException {
@@ -349,19 +405,16 @@ public class KeycloakClient extends AbstractKeyManager {
 
     @Override
     public boolean registerNewResource(API api, Map map) throws APIManagementException {
-
         return true;
     }
 
     @Override
     public Map getResourceByApiId(String s) throws APIManagementException {
-
         return null;
     }
 
     @Override
     public boolean updateRegisteredResource(API api, Map map) throws APIManagementException {
-
         return true;
     }
 
@@ -372,91 +425,78 @@ public class KeycloakClient extends AbstractKeyManager {
 
     @Override
     public void deleteMappedApplication(String s) throws APIManagementException {
-
     }
 
     @Override
     public Set<String> getActiveTokensByConsumerKey(String s) throws APIManagementException {
-
         return Collections.emptySet();
     }
 
     @Override
     public org.wso2.carbon.apimgt.api.model.AccessTokenInfo getAccessTokenByConsumerKey(String s)
             throws APIManagementException {
-
         return null;
     }
 
     @Override
     public Map<String, Set<Scope>> getScopesForAPIS(String s) throws APIManagementException {
-
         return null;
     }
 
     @Override
     public void registerScope(Scope scope) throws APIManagementException {
-
     }
 
     @Override
     public Scope getScopeByName(String s) throws APIManagementException {
-
         return null;
     }
 
     @Override
     public Map<String, Scope> getAllScopes() throws APIManagementException {
-
         return null;
     }
 
     @Override
     public void attachResourceScopes(API api, Set<URITemplate> uriTemplates) throws APIManagementException {
-
     }
 
     @Override
     public void updateResourceScopes(API api, Set<String> oldLocalScopeKeys, Set<Scope> newLocalScopes,
-                                     Set<URITemplate> oldURITemplates, Set<URITemplate> newURITemplates)
+            Set<URITemplate> oldURITemplates, Set<URITemplate> newURITemplates)
             throws APIManagementException {
 
     }
 
     @Override
     public void detachResourceScopes(API api, Set<URITemplate> uriTemplates) throws APIManagementException {
-
     }
 
     @Override
     public void deleteScope(String s) throws APIManagementException {
-
     }
 
     @Override
     public void updateScope(Scope scope) throws APIManagementException {
-
     }
 
     @Override
     public boolean isScopeExists(String s) throws APIManagementException {
-
         return false;
     }
 
     @Override
     public void validateScopes(Set<Scope> scopes) throws APIManagementException {
-
     }
 
     @Override
     public String getType() {
-
         return KeycloakConstants.KEY_CLOAK_TYPE;
     }
 
     /**
-     * This method will create {@code OAuthApplicationInfo} object from a {@link ClientInfo}
+     * This method will create {@code OAuthApplicationInfo} object from a
+     * {@link ClientInfo}
      *
      * @param clientInfo Response returned from server as {@link ClientInfo}
      * @return OAuthApplicationInfo object will return.
@@ -482,7 +522,8 @@ public class KeycloakClient extends AbstractKeyManager {
     }
 
     /**
-     * Returns a space separate string from list of the contents in the string array.
+     * Returns a space separate string from list of the contents in the string
+     * array.
      *
      * @param stringArray an array of strings.
      * @return space separated string.
@@ -506,10 +547,10 @@ public class KeycloakClient extends AbstractKeyManager {
      * Common method to throw exceptions. This will only expect one parameter.
      *
      * @param msg error message as a string.
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     private static void handleException(String msg) throws APIManagementException {
-
         log.error(msg);
         throw new APIManagementException(msg);
     }
@@ -521,11 +562,19 @@ public class KeycloakClient extends AbstractKeyManager {
      * @param clientSecret clientSecret of the oauth client.
      * @param parameters   list of request parameters.
      * @return an {@code JSONObject}
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     private AccessTokenInfo getAccessToken(String clientId, String clientSecret,
-                                           List<NameValuePair> parameters) throws
-            APIManagementException {
+            List<NameValuePair> parameters) throws APIManagementException {
+
+        debugLogger("getAccessToken", "clientId", clientId);
+        debugLogger("getAccessToken", "clientSecret", clientSecret);
+
+        if (parameters != null) {
+            parameters.forEach(
+                    vp -> log.info("MICBN (getAccessToken) parameters -- " + vp.getName() + " : " + vp.getValue()));
+        }
 
         try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
             String tokenEndpoint = (String) configuration.getParameter(APIConstants.KeyManager.TOKEN_ENDPOINT);
@@ -535,6 +584,7 @@ public class KeycloakClient extends AbstractKeyManager {
 
             httpPost.setHeader(KeycloakConstants.AUTHORIZATION,
                     KeycloakConstants.AUTHENTICATION_BASIC + encodedCredentials);
+
             if (log.isDebugEnabled()) {
                 log.debug("Invoking HTTP request to get the accesstoken.");
             }
@@ -546,7 +596,6 @@ public class KeycloakClient extends AbstractKeyManager {
                         KeycloakConstants.ERROR_COULD_NOT_READ_HTTP_ENTITY, response));
             }
             if (org.apache.commons.httpclient.HttpStatus.SC_OK == statusCode) {
-
                 try (InputStream inputStream = entity.getContent()) {
                     String content = IOUtils.toString(inputStream);
                     return new Gson().fromJson(content, AccessTokenInfo.class);
@@ -594,24 +643,24 @@ public class KeycloakClient extends AbstractKeyManager {
      */
     public OAuthApplicationInfo updateApplicationOwner(OAuthAppRequest oAuthAppRequest, String owner)
             throws APIManagementException {
-
         return oAuthAppRequest.getOAuthApplicationInfo();
     }
 
     /**
-     * This method can be used to create a JSON Payload out of the Parameters defined in an OAuth Application
+     * This method can be used to create a JSON Payload out of the Parameters
+     * defined in an OAuth Application
      * in order to create and update the client.
      *
      * @param oAuthApplicationInfo Object that needs to be converted.
      * @return JSON payload.
-     * @throws APIManagementException This is the custom exception class for API management.
+     * @throws APIManagementException This is the custom exception class for API
+     *                                management.
      */
     private ClientInfo createClientInfoFromOauthApplicationInfo(OAuthApplicationInfo oAuthApplicationInfo)
             throws APIManagementException {
 
         ClientInfo clientInfo = new ClientInfo();
-        String userId = (String) oAuthApplicationInfo.getParameter(ApplicationConstants.
-                OAUTH_CLIENT_USERNAME);
+        String userId = (String) oAuthApplicationInfo.getParameter(ApplicationConstants.OAUTH_CLIENT_USERNAME);
         String userNameForSp = MultitenantUtils.getTenantAwareUsername(userId);
         String domain = UserCoreUtil.extractDomainFromName(userNameForSp);
         if (domain != null && !domain.isEmpty() && !UserCoreConstants.PRIMARY_DEFAULT_DOMAIN_NAME.equals(domain)) {
@@ -623,17 +672,25 @@ public class KeycloakClient extends AbstractKeyManager {
         if (keyType != null) {
             applicationName = userNameForSp.concat(applicationName).concat("_").concat(keyType);
         }
-        List<String> grantTypes = new ArrayList<>();
 
+        debugLogger("createClientInfoFromOauthApplicationInfo", "userId", userId);
+        debugLogger("createClientInfoFromOauthApplicationInfo", "userNameForSp", userNameForSp);
+        debugLogger("createClientInfoFromOauthApplicationInfo", "JsonString", //
+            oAuthApplicationInfo.getJsonString());
+        debugLogger("createClientInfoFromOauthApplicationInfo", "applicationName", applicationName);
+        debugLogger("createClientInfoFromOauthApplicationInfo", "callBackURL", callBackURL);
+
+        List<String> grantTypes = new ArrayList<>();
         if (oAuthApplicationInfo.getParameter(APIConstants.JSON_GRANT_TYPES) != null) {
-            grantTypes =
-                    Arrays.asList(
-                            ((String) oAuthApplicationInfo.getParameter(APIConstants.JSON_GRANT_TYPES)).split(","));
+            grantTypes = Arrays.asList(
+                    ((String) oAuthApplicationInfo.getParameter(APIConstants.JSON_GRANT_TYPES)).split(","));
         }
         Object parameter = oAuthApplicationInfo.getParameter(APIConstants.JSON_ADDITIONAL_PROPERTIES);
         Map<String, Object> additionalProperties = new HashMap<>();
         if (parameter instanceof String) {
             additionalProperties = new Gson().fromJson((String) parameter, Map.class);
+            debugLogger("createClientInfoFromOauthApplicationInfo", "additionalProperties", //
+                additionalProperties.toString());
         }
         clientInfo.setClientName(applicationName);
         if (!grantTypes.isEmpty()) {
@@ -649,7 +706,7 @@ public class KeycloakClient extends AbstractKeyManager {
 
         if (additionalProperties.containsKey(KeycloakConstants.CLIENT_ID)) {
             clientInfo.setClientId((String) additionalProperties.get(KeycloakConstants.CLIENT_ID));
-        }
+        } 
 
         if (additionalProperties.containsKey(KeycloakConstants.CLIENT_SECRET)) {
             clientInfo.setClientSecret((String) additionalProperties.get(KeycloakConstants.CLIENT_SECRET));
@@ -663,8 +720,8 @@ public class KeycloakClient extends AbstractKeyManager {
                     (String) additionalProperties.get(KeycloakConstants.CLIENT_TOKEN_ENDPOINT_AUTH_METHOD));
         }
         if (additionalProperties.containsKey(KeycloakConstants.TLS_CLIENT_CERTIFICATE_BOUND_ACCESS_TOKEN)) {
-            Object clientBoundAccessToken =
-                    additionalProperties.get(KeycloakConstants.TLS_CLIENT_CERTIFICATE_BOUND_ACCESS_TOKEN);
+            Object clientBoundAccessToken = additionalProperties
+                    .get(KeycloakConstants.TLS_CLIENT_CERTIFICATE_BOUND_ACCESS_TOKEN);
             if (clientBoundAccessToken instanceof Boolean) {
                 clientInfo.setEnableClientCertificateBindAccessToken((Boolean) clientBoundAccessToken);
             } else if (clientBoundAccessToken instanceof String) {

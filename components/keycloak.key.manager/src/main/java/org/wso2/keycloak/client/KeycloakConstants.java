@@ -23,6 +23,7 @@ package org.wso2.keycloak.client;
  *
  */
 public class KeycloakConstants {
+
     public static final String UTF_8 = "UTF-8";
     public static final String AUTHORIZATION = "Authorization";
     public static final String AUTHENTICATION_BASIC = "Basic ";
